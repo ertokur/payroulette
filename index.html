@@ -278,6 +278,42 @@
   .small-btn.del { color: var(--danger); }
   .small-btn svg { width: 18px; height: 18px; }
   .hint { color: var(--muted); font-size: 13px; margin: 10px 0 0; text-align: center; }
+  .head-btns { display: flex; gap: 10px; }
+
+  /* History */
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .stats:empty { display: none; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid rgba(255,255,255,.08);
+    font-size: 13px; font-weight: 700;
+  }
+  .chip b { color: var(--gold); font-family: "Unbounded", sans-serif; font-size: 12px; }
+  .h-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 4px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .h-item:last-child { border-bottom: 0; }
+  .h-num { width: 28px; color: var(--muted); font-size: 13px; text-align: right; flex: none; }
+  .h-name { flex: 1; min-width: 0; font-weight: 700; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .h-time { color: var(--muted); font-size: 13px; text-align: right; flex: none; line-height: 1.3; }
+  .empty { color: var(--muted); text-align: center; margin: 24px 0; }
+  .clear-btn {
+    margin-top: 12px;
+    height: 48px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,93,93,.4);
+    background: rgba(255,93,93,.1);
+    color: var(--danger);
+    font: 800 15px "Manrope", sans-serif;
+    cursor: pointer;
+    flex: none;
+  }
+  .clear-btn:disabled { opacity: .35; cursor: default; }
 
   /* Winner */
   #fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
@@ -328,9 +364,14 @@
 <div class="app">
   <header>
     <h1 class="logo">PayRoulette</h1>
-    <button class="icon-btn" id="menuBtn" aria-label="Редактировать имена">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-    </button>
+    <div class="head-btns">
+      <button class="icon-btn" id="historyBtn" aria-label="История">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      </button>
+      <button class="icon-btn" id="menuBtn" aria-label="Редактировать имена">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
   </header>
   <div class="stage">
     <h2 class="tagline">Кто сегодня закрывает счёт<br><span>и забирает кэшбек?</span></h2>
@@ -369,6 +410,20 @@
   </form>
   <ul class="list" id="list"></ul>
   <p class="hint">Тяните за ⋮⋮ или жмите стрелки, чтобы поменять порядок</p>
+</section>
+
+<section class="drawer" id="historyDrawer" aria-label="История">
+  <div class="grabber"></div>
+  <div class="drawer-head">
+    <h2>История</h2>
+    <button class="icon-btn" id="historyCloseBtn" aria-label="Закрыть">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="stats" id="stats"></div>
+  <ul class="list" id="historyList"></ul>
+  <p class="empty" id="historyEmpty">Пока никто не платил. Крутите колесо!</p>
+  <button class="clear-btn" id="clearHistory" type="button">Очистить историю</button>
 </section>
 
 <canvas id="fx"></canvas>
@@ -728,6 +783,7 @@
 
   function celebrate(name) {
     if (!name) return;
+    addHistory(name);
     winnerName.textContent = name;
     winnerEl.classList.add("show");
     fanfare();
@@ -823,7 +879,86 @@
   }
   document.getElementById("menuBtn").addEventListener("click", openDrawer);
   document.getElementById("closeBtn").addEventListener("click", closeDrawer);
-  scrim.addEventListener("click", closeDrawer);
+  scrim.addEventListener("click", () => {
+    if (historyDrawer.classList.contains("open")) closeHistory(); else closeDrawer();
+  });
+
+  // ---------- history ----------
+  const HISTORY_KEY = "payroulette.history.v1";
+  const historyDrawer = document.getElementById("historyDrawer");
+  const historyList = document.getElementById("historyList");
+  const historyEmpty = document.getElementById("historyEmpty");
+  const statsEl = document.getElementById("stats");
+  const clearBtn = document.getElementById("clearHistory");
+  let history = loadHistory();
+
+  function loadHistory() {
+    try {
+      const v = JSON.parse(localStorage.getItem(HISTORY_KEY));
+      if (Array.isArray(v)) return v.filter(x => x && typeof x.name === "string" && typeof x.ts === "number");
+    } catch (e) {}
+    return [];
+  }
+  function saveHistory() {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) {}
+  }
+  function addHistory(name) {
+    history.unshift({ name, ts: Date.now() });
+    if (history.length > 500) history.length = 500;
+    saveHistory();
+  }
+
+  const fmtDate = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const fmtTime = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
+
+  function renderHistory() {
+    historyList.innerHTML = "";
+    statsEl.innerHTML = "";
+    historyEmpty.hidden = history.length > 0;
+    clearBtn.disabled = history.length === 0;
+
+    const counts = new Map();
+    history.forEach(h => counts.set(h.name, (counts.get(h.name) || 0) + 1));
+    [...counts.entries()].sort((a, b) => b[1] - a[1]).forEach(([name, n]) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.append(document.createTextNode(name + " "));
+      const b = document.createElement("b"); b.textContent = "×" + n;
+      chip.append(b);
+      statsEl.append(chip);
+    });
+
+    history.forEach((h, i) => {
+      const li = document.createElement("li");
+      li.className = "h-item";
+      const num = document.createElement("span"); num.className = "h-num"; num.textContent = history.length - i;
+      const nm = document.createElement("span"); nm.className = "h-name"; nm.textContent = h.name;
+      const d = new Date(h.ts);
+      const tm = document.createElement("span"); tm.className = "h-time";
+      tm.append(document.createTextNode(fmtDate.format(d)), document.createElement("br"), document.createTextNode(fmtTime.format(d)));
+      li.append(num, nm, tm);
+      historyList.append(li);
+    });
+  }
+
+  function openHistory() {
+    if (phase !== "idle") return;
+    hideWinner();
+    renderHistory();
+    historyDrawer.classList.add("open"); scrim.classList.add("open");
+  }
+  function closeHistory() {
+    historyDrawer.classList.remove("open"); scrim.classList.remove("open");
+  }
+  document.getElementById("historyBtn").addEventListener("click", openHistory);
+  document.getElementById("historyCloseBtn").addEventListener("click", closeHistory);
+  clearBtn.addEventListener("click", () => {
+    if (!history.length) return;
+    if (!confirm("Очистить всю историю?")) return;
+    history = [];
+    saveHistory();
+    renderHistory();
+  });
 
   function commit(rerender = true) {
     save();

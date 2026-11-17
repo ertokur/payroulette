@@ -1,4 +1,4 @@
-const CACHE = "payroulette-v2";
+const CACHE = "payroulette-v3";
 const ASSETS = [
   "./",
   "./index.html",
